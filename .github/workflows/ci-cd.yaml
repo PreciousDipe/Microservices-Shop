@@ -109,6 +109,16 @@ jobs:
           missing=$(grep -E '^[A-Z_]+=$' .env | cut -d= -f1 | xargs)
           [ -z "$missing" ] || { echo "::error::Not set in Settings > Secrets and variables > Actions: $missing"; exit 1; }
 
+      # Docker Hub sometimes returns 5xx errors for a short time; retry instead of failing the run.
+      - name: Pull postgres and redis (up to 3 tries)
+        run: |
+          for attempt in 1 2 3; do
+            docker compose -f docker-compose.yml pull --ignore-buildable && exit 0
+            echo "::warning::Pull failed (attempt $attempt of 3), retrying in 20s"
+            sleep 20
+          done
+          exit 1
+
       - name: Start stack (waits for every health check)
         run: |
           docker compose -f docker-compose.yml up -d --build --wait --wait-timeout 180
@@ -160,8 +170,7 @@ jobs:
         run: docker compose -f docker-compose.yml down -v
 
   # ---------------------------------------------------------------------------
-  # 3. Push to Docker Hub on git push (not on pull requests)
-  #    main  -> :sha-<commit>     tag v1.2.3 -> :v1.2.3
+  # 3. Push to Docker Hub on git push
   # ---------------------------------------------------------------------------
   push:
     needs: smoke-test
@@ -185,29 +194,15 @@ jobs:
             echo "TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
 
-      - name: Create .env from GitHub variables and secrets
-        env:
-          # Every value comes from a repository secret (Settings > Secrets and variables > Actions).
-          ENV_FILE_CONTENT: |
-            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            TAG=${{ secrets.TAG }}
-            NGINX_HOST_PORT=${{ secrets.NGINX_HOST_PORT }}
-            NGINX_PORT=${{ secrets.NGINX_PORT }}
-            GATEWAY_PORT=${{ secrets.GATEWAY_PORT }}
-            PRODUCT_SERVICE_PORT=${{ secrets.PRODUCT_SERVICE_PORT }}
-            ORDER_SERVICE_PORT=${{ secrets.ORDER_SERVICE_PORT }}
-            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-            CACHE_TTL_SECONDS=${{ secrets.CACHE_TTL_SECONDS }}
-        run: |
-          printf '%s' "$ENV_FILE_CONTENT" > .env
-          missing=$(grep -E '^[A-Z_]+=$' .env | cut -d= -f1 | xargs)
-          [ -z "$missing" ] || { echo "::error::Not set in Settings > Secrets and variables > Actions: $missing"; exit 1; }
-
+      # Plain docker build, not compose: compose needs the database passwords just to
+      # read the file, and this job only builds images, so it gets no .env.
       - name: Build and push images
         run: |
-          echo "Pushing $DOCKERHUB_USERNAME/shop-*:$TAG"
-          docker compose -f docker-compose.yml build
-          docker compose -f docker-compose.yml push nginx api-gateway product-service order-service
+          for service in nginx api-gateway product-service order-service; do
+            context=services/$service
+            [ "$service" = nginx ] && context=nginx
+            image="$DOCKERHUB_USERNAME/shop-$service:$TAG"
+            echo "Pushing $image"
+            docker build -t "$image" "$context"
+            docker push "$image"
+          done
