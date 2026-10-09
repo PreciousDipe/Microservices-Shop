@@ -1,0 +1,24 @@
+# Dependencies (reinstalled with npm ci in the build stage)
+node_modules
+npm-debug.log*
+
+# Version control and CI
+.git
+.github
+
+# Secrets and local environment files
+.env
+.env.*
+.npmrc
+*.pem
+*.key
+
+# Tests, docs, Docker files and editor files
+test
+coverage
+*.md
+Dockerfile*
+.dockerignore
+.vscode
+.idea
+.DS_Store

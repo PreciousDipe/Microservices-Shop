@@ -1,0 +1,17 @@
+{
+  "name": "order-service",
+  "version": "1.0.0",
+  "description": "Creates and lists orders, priced by the product service, stored in PostgreSQL",
+  "main": "src/server.js",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.16.3"
+  }
+}

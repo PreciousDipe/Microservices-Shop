@@ -1,0 +1,56 @@
+x-dev-node: &dev-node
+  read_only: false        # compose watch needs to write the synced files
+  environment:
+    NODE_ENV: development
+    NODE_OPTIONS: ""
+  networks:
+    - debug               # non-internal network, needed to publish the debug port
+
+services:
+  api-gateway:
+    <<: *dev-node
+    command: ["node", "--watch", "--inspect=0.0.0.0:9229", "src/server.js"]
+    ports:
+      - "127.0.0.1:${GATEWAY_DEBUG_PORT}:9229"
+    develop:
+      watch:
+        - action: sync
+          path: ./services/api-gateway/src
+          target: /app/src
+        - action: rebuild
+          path: ./services/api-gateway/package.json
+
+  product-service:
+    <<: *dev-node
+    command: ["node", "--watch", "--inspect=0.0.0.0:9229", "src/server.js"]
+    ports:
+      - "127.0.0.1:${PRODUCT_DEBUG_PORT}:9229"
+    develop:
+      watch:
+        - action: sync
+          path: ./services/product-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./services/product-service/package.json
+
+  order-service:
+    <<: *dev-node
+    command: ["node", "--watch", "--inspect=0.0.0.0:9229", "src/server.js"]
+    ports:
+      - "127.0.0.1:${ORDER_DEBUG_PORT}:9229"
+    develop:
+      watch:
+        - action: sync
+          path: ./services/order-service/src
+          target: /app/src
+        - action: rebuild
+          path: ./services/order-service/package.json
+
+  postgres:
+    ports:
+      - "127.0.0.1:${POSTGRES_DEV_PORT}:5432"
+    networks:
+      - debug
+
+networks:
+  debug:

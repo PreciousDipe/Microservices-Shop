@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shop Orders</title>
+<style>
+  :root {
+    --bg: #f5f6f3; --surface: #ffffff; --fg: #1d2420; --muted: #5f6b63; --line: #dde2dc;
+    --accent: #2f7a3e; --accent-fg: #ffffff; --ok: #2f7a3e; --warn: #a86a12; --info: #2f63a8; --err: #b3392f;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #131714; --surface: #1b211d; --fg: #e4e9e4; --muted: #9aa69d; --line: #2c342f;
+            --accent: #5bb36c; --accent-fg: #0f1410; --ok: #5bb36c; --warn: #e0a24a; --info: #7aa7e6; --err: #ec7a6f; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font); }
+  main { max-width: 920px; margin: 0 auto; padding: 32px 16px 56px; display: grid; gap: 28px; }
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; }
+  h1 { margin: 0; font-size: 1.6rem; letter-spacing: -.01em; }
+  h2 { margin: 0 0 12px; font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .status { display: flex; gap: 8px; flex-wrap: wrap; font: 12px var(--mono); }
+  .pill { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+  .pill::before { content: "●"; margin-right: 6px; }
+  .pill.up::before { color: var(--ok); } .pill.down::before { color: var(--err); } .pill.unknown::before { color: var(--muted); }
+
+  .products { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .product { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+  .product h3 { margin: 0; font-size: 1.05rem; }
+  .price { font: 600 1.15rem var(--mono); font-variant-numeric: tabular-nums; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  label { font-size: .85rem; color: var(--muted); }
+  input[type=number] { width: 72px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+  button { padding: 8px 14px; border: 1px solid transparent; border-radius: 6px; background: var(--accent); color: var(--accent-fg); font: 600 .9rem var(--font); cursor: pointer; }
+  .product button { margin-left: auto; }
+  button.secondary { background: transparent; color: var(--fg); border-color: var(--line); }
+  button.danger { background: transparent; color: var(--err); border-color: var(--err); }
+  button.danger.confirm { background: var(--err); color: var(--surface); }
+  button:disabled { opacity: .55; cursor: wait; }
+  button:focus-visible, input:focus-visible, .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .source { font: 12px var(--mono); color: var(--muted); margin-top: 8px; }
+
+  .notice { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
+  .notice.ok { border-color: var(--ok); } .notice.err { border-color: var(--err); color: var(--err); }
+
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr[data-id] { cursor: pointer; }
+  tbody tr[data-id]:hover td { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+  td.num, th.num { text-align: right; }
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  tr.new td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .link { background: none; border: 0; padding: 0; color: inherit; font: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; cursor: pointer; }
+  .empty { padding: 18px 14px; color: var(--muted); }
+
+  .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; border: 1px solid currentColor; }
+  .badge.pending { color: var(--warn); } .badge.paid { color: var(--info); }
+  .badge.delivered { color: var(--ok); } .badge.cancelled { color: var(--muted); text-decoration: line-through; }
+
+  dialog { width: min(460px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--fg); }
+  dialog::backdrop { background: rgba(10, 14, 11, .45); }
+  .detail { padding: 20px; display: grid; gap: 16px; }
+  .detail-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .detail-head h3 { margin: 0; font-size: 1.2rem; }
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; }
+  dt { color: var(--muted); font-size: .85rem; }
+  dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+  dd.total { font: 600 1.05rem var(--mono); }
+  .timeline { display: flex; gap: 6px; font: 11px var(--mono); color: var(--muted); }
+  .timeline span { flex: 1; text-align: center; padding-top: 6px; border-top: 3px solid var(--line); }
+  .timeline span.done { color: var(--fg); border-color: var(--accent); }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .detail-error { color: var(--err); margin: 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Shop Orders</h1>
+    <div class="status" id="status" aria-live="polite">
+      <span class="pill unknown">gateway</span><span class="pill unknown">products</span><span class="pill unknown">orders</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>Products</h2>
+    <div class="products" id="products"><p class="empty">Loading products…</p></div>
+    <p class="source" id="source"></p>
+  </section>
+
+  <div id="notice" class="notice" hidden aria-live="polite"></div>
+
+  <section>
+    <h2>Orders</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Product</th><th class="num">Qty</th><th class="num">Total</th><th>Status</th><th>Placed</th></tr></thead>
+        <tbody id="orders"><tr><td colspan="6" class="empty">Loading orders…</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<dialog id="detail" aria-labelledby="detail-title">
+  <div class="detail" id="detail-body"></div>
+</dialog>
+
+<script>
+  const naira = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' });
+  const $ = (id) => document.getElementById(id);
+  const when = (iso) => new Date(iso).toLocaleString();
+  let newestOrderId = null;
+
+  // Same rules as order-service: the buttons shown for each status.
+  const ACTIONS = {
+    pending: [{ to: 'paid', label: 'Mark as paid' }, { to: 'cancelled', label: 'Cancel order', danger: true }],
+    paid: [{ to: 'delivered', label: 'Mark as delivered' }, { to: 'cancelled', label: 'Cancel order', danger: true }],
+    delivered: [],
+    cancelled: [],
+  };
+  const STEPS = ['pending', 'paid', 'delivered'];
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  const badge = (status) => `<span class="badge ${esc(status)}">${esc(status)}</span>`;
+
+  async function api(path, options) {
+    const res = await fetch('/api' + path, options);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
+    return body;
+  }
+  const send = (path, method, data) => api(path, {
+    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  });
+
+  function showNotice(text, kind) {
+    const n = $('notice');
+    n.textContent = text;
+    n.className = 'notice ' + kind;
+    n.hidden = false;
+  }
+
+  async function loadStatus() {
+    try {
+      const s = await api('/status');
+      $('status').innerHTML = ['gateway', 'products', 'orders']
+        .map((k) => `<span class="pill ${s[k] === 'up' ? 'up' : 'down'}">${k}</span>`).join('');
+    } catch {
+      $('status').innerHTML = '<span class="pill down">gateway unreachable</span>';
+    }
+  }
+
+  async function loadProducts() {
+    try {
+      const { source, products } = await api('/products');
+      $('products').innerHTML = products.map((p) => `
+        <form class="product" data-id="${p.id}">
+          <h3>${esc(p.name)}</h3>
+          <div class="price">${naira.format(Number(p.price))}</div>
+          <div class="row">
+            <label for="qty-${p.id}">Qty</label>
+            <input id="qty-${p.id}" name="quantity" type="number" min="1" max="999" value="1" required>
+            <button type="submit">Order</button>
+          </div>
+        </form>`).join('');
+      $('source').textContent = `Product list served from ${source === 'cache' ? 'Redis cache' : 'PostgreSQL'}.`;
+    } catch (e) {
+      $('products').innerHTML = `<p class="empty">Could not load products: ${esc(e.message)}</p>`;
+    }
+  }
+
+  async function loadOrders() {
+    try {
+      const { orders } = await api('/orders');
+      $('orders').innerHTML = orders.length
+        ? orders.map((o) => `
+          <tr data-id="${o.id}" class="${o.id === newestOrderId ? 'new' : ''}">
+            <td>${o.id}</td>
+            <td><button type="button" class="link" data-open="${o.id}">${esc(o.product_name)}</button></td>
+            <td class="num">${o.quantity}</td>
+            <td class="num">${naira.format(Number(o.total_price))}</td>
+            <td>${badge(o.status || 'pending')}</td>
+            <td>${when(o.created_at)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="6" class="empty">No orders yet. Pick a product above and press Order.</td></tr>';
+    } catch (e) {
+      $('orders').innerHTML = `<tr><td colspan="6" class="empty">Could not load orders: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function renderDetail(o, error) {
+    const qty = Number(o.quantity);
+    const total = Number(o.total_price);
+    const reached = o.status === 'cancelled' ? -1 : STEPS.indexOf(o.status);
+    const actions = ACTIONS[o.status] || [];
+    $('detail-body').innerHTML = `
+      <div class="detail-head">
+        <h3 id="detail-title">Order #${o.id}</h3>
+        ${badge(o.status)}
+      </div>
+      ${o.status === 'cancelled'
+        ? '<p class="detail-error" style="color:var(--muted)">This order was cancelled.</p>'
+        : `<div class="timeline">${STEPS.map((s, i) => `<span class="${i <= reached ? 'done' : ''}">${s}</span>`).join('')}</div>`}
+      <dl>
+        <dt>Product</dt><dd>${esc(o.product_name)} <span style="color:var(--muted)">(#${o.product_id})</span></dd>
+        <dt>Unit price</dt><dd>${naira.format(total / qty)}</dd>
+        <dt>Quantity</dt><dd>${qty}</dd>
+        <dt>Total</dt><dd class="total">${naira.format(total)}</dd>
+        <dt>Placed</dt><dd>${when(o.created_at)}</dd>
+        <dt>Last updated</dt><dd>${when(o.updated_at || o.created_at)}</dd>
+      </dl>
+      ${error ? `<p class="detail-error">${esc(error)}</p>` : ''}
+      <div class="actions">
+        ${actions.map((a) => `<button type="button" class="${a.danger ? 'danger' : ''}" data-to="${a.to}">${a.label}</button>`).join('')}
+        <button type="button" class="secondary" data-close>Close</button>
+      </div>`;
+  }
+
+  async function openOrder(id) {
+    const dialog = $('detail');
+    $('detail-body').innerHTML = '<p class="empty">Loading order…</p>';
+    if (!dialog.open) dialog.showModal();
+    history.replaceState(null, '', '#order-' + id);
+    try {
+      renderDetail(await api('/orders/' + id));
+    } catch (e) {
+      $('detail-body').innerHTML = `<p class="detail-error">${esc(e.message)}</p>
+        <div class="actions"><button type="button" class="secondary" data-close>Close</button></div>`;
+    }
+  }
+
+  // Place an order from a product card.
+  $('products').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.target;
+    const button = form.querySelector('button');
+    button.disabled = true;
+    try {
+      const o = await send('/orders', 'POST', { productId: Number(form.dataset.id), quantity: Number(form.quantity.value) });
+      newestOrderId = o.id;
+      showNotice(`Order #${o.id} placed: ${o.quantity} × ${o.product_name}, total ${naira.format(Number(o.total_price))}. Click it below to see details.`, 'ok');
+      form.quantity.value = 1;
+      await loadOrders();
+    } catch (e) {
+      showNotice(`Order not placed. ${e.message}`, 'err');
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  // Open an order's details from anywhere on its row.
+  $('orders').addEventListener('click', (event) => {
+    const row = event.target.closest('tr[data-id]');
+    if (row) openOrder(Number(row.dataset.id));
+  });
+
+  // Status buttons and Close inside the details panel.
+  $('detail').addEventListener('click', async (event) => {
+    const dialog = $('detail');
+    if (event.target === dialog || event.target.closest('[data-close]')) return dialog.close();
+    const button = event.target.closest('[data-to]');
+    if (!button) return;
+
+    // Cancelling can't be undone, so it takes a second click.
+    if (button.classList.contains('danger') && !button.classList.contains('confirm')) {
+      button.classList.add('confirm');
+      button.textContent = 'Click again to cancel';
+      return;
+    }
+    const id = Number(location.hash.replace('#order-', ''));
+    dialog.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try {
+      const o = await send('/orders/' + id, 'PATCH', { status: button.dataset.to });
+      renderDetail(o);
+      await loadOrders();
+    } catch (e) {
+      // Reload the order so the panel shows its real current status next to the error.
+      try {
+        renderDetail(await api('/orders/' + id), e.message);
+      } catch {
+        $('detail-body').innerHTML = `<p class="detail-error">${esc(e.message)}</p>
+          <div class="actions"><button type="button" class="secondary" data-close>Close</button></div>`;
+      }
+    }
+  });
+
+  $('detail').addEventListener('close', () => history.replaceState(null, '', location.pathname));
+
+  loadStatus();
+  loadProducts();
+  loadOrders().then(() => {
+    const m = location.hash.match(/^#order-(\d+)$/);
+    if (m) openOrder(Number(m[1]));
+  });
+</script>
+</body>
+</html>

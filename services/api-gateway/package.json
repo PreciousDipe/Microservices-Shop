@@ -1,0 +1,16 @@
+{
+  "name": "api-gateway",
+  "version": "1.0.0",
+  "description": "Routes /api/* requests to the product and order services",
+  "main": "src/server.js",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

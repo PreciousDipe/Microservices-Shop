@@ -1,0 +1,4 @@
+# Only the config and the order page are needed in the build context.
+*
+!nginx.conf
+!html/index.html

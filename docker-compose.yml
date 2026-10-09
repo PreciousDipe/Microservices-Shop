@@ -1,0 +1,176 @@
+name: Microservices-Shop-dev
+
+# Hardening shared by the three Node.js services.
+x-node-service: &node-service
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  deploy:
+    resources:
+      limits:
+        cpus: "0.50"
+        memory: 256M
+
+services:
+  # --------------------------------------------------------------------------
+  # Entry point
+  # --------------------------------------------------------------------------
+  nginx:
+    build: ./nginx
+    image: ${DOCKERHUB_USERNAME:?set DOCKERHUB_USERNAME in .env}/shop-nginx:${TAG:?set TAG in .env}
+    restart: unless-stopped
+    environment:
+      NGINX_PORT: ${NGINX_PORT}
+      GATEWAY_HOST: api-gateway
+      GATEWAY_PORT: ${GATEWAY_PORT}
+    ports:
+      - "${NGINX_HOST_PORT}:${NGINX_PORT}"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - edge
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+
+  api-gateway:
+    <<: *node-service
+    build: ./services/api-gateway
+    image: ${DOCKERHUB_USERNAME}/shop-api-gateway:${TAG}
+    environment:
+      PORT: ${GATEWAY_PORT}
+      PRODUCT_SERVICE_URL: http://product-service:${PRODUCT_SERVICE_PORT}
+      ORDER_SERVICE_URL: http://order-service:${ORDER_SERVICE_PORT}
+    depends_on:
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+    networks:
+      - edge
+      - backend
+
+  product-service:
+    <<: *node-service
+    build: ./services/product-service
+    image: ${DOCKERHUB_USERNAME}/shop-product-service:${TAG}
+    environment:
+      PORT: ${PRODUCT_SERVICE_PORT}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGDATABASE: ${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - data
+
+  order-service:
+    <<: *node-service
+    build: ./services/order-service
+    image: ${DOCKERHUB_USERNAME}/shop-order-service:${TAG}
+    environment:
+      PORT: ${ORDER_SERVICE_PORT}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      PRODUCT_SERVICE_URL: http://product-service:${PRODUCT_SERVICE_PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    networks:
+      - backend
+      - data
+
+  # --------------------------------------------------------------------------
+  # Database
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:17.11-alpine3.24
+    user: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  redis:
+    image: redis:8.8.3-alpine
+    user: redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    # The password is read from the environment, so it is not written into the compose config.
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes --maxmemory 100mb --maxmemory-policy allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  edge:
+  backend:
+    internal: true
+  data:
+    internal: true

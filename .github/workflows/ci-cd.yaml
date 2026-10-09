@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]      # e.g. git tag v1.0.0 && git push origin v1.0.0
+
+permissions:
+  contents: read
+
+env:
+  HADOLINT_IMAGE: hadolint/hadolint:v2.12.0
+  TRIVY_IMAGE: aquasec/trivy:0.75.0
+  MAX_IMAGE_MB: 150
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Lint, build, size-check, non-root check and scan every image
+  # ---------------------------------------------------------------------------
+  image:
+    name: image (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api-gateway
+            context: services/api-gateway
+          - service: product-service
+            context: services/product-service
+          - service: order-service
+            context: services/order-service
+          - service: nginx
+            context: nginx
+    env:
+      IMAGE: shop-${{ matrix.service }}:ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Dockerfile (hadolint)
+        run: docker run --rm -i "$HADOLINT_IMAGE" hadolint --failure-threshold warning --ignore DL3018 - < ${{ matrix.context }}/Dockerfile
+
+      - name: Build image
+        run: docker build -t "$IMAGE" ${{ matrix.context }}
+
+      - name: Check image size (must be under ${{ env.MAX_IMAGE_MB }} MB)
+        run: |
+          mb=$(( $(docker image inspect "$IMAGE" --format '{{.Size}}') / 1024 / 1024 ))
+          echo "$IMAGE: ${mb} MB"
+          printf '| Image | Size |\n|---|---|\n| %s | %s MB |\n' "${{ matrix.service }}" "$mb" >> "$GITHUB_STEP_SUMMARY"
+          test "$mb" -lt "$MAX_IMAGE_MB"
+
+      - name: Check image runs as non-root
+        run: |
+          user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')
+          echo "Configured user: ${user:-<none, root>}"
+          [ -n "$user" ] && [ "${user%%:*}" != "root" ] && [ "${user%%:*}" != "0" ]
+
+      - name: Trivy report
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache \
+            "$TRIVY_IMAGE" image --severity HIGH,CRITICAL --exit-code 0 "$IMAGE"
+
+      - name: Trivy gate (fail on fixable CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache \
+            "$TRIVY_IMAGE" image --severity CRITICAL --ignore-unfixed --exit-code 1 "$IMAGE"
+
+  # ---------------------------------------------------------------------------
+  # 2. Start the whole stack and call it through nginx
+  # ---------------------------------------------------------------------------
+  smoke-test:
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env from GitHub variables and secrets
+        env:
+          # Passwords come from secrets (hidden in logs), everything else from variables.
+          ENV_FILE_CONTENT: |
+            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+            TAG=${{ vars.TAG }}
+            NGINX_HOST_PORT=${{ vars.NGINX_HOST_PORT }}
+            NGINX_PORT=${{ vars.NGINX_PORT }}
+            GATEWAY_PORT=${{ vars.GATEWAY_PORT }}
+            PRODUCT_SERVICE_PORT=${{ vars.PRODUCT_SERVICE_PORT }}
+            ORDER_SERVICE_PORT=${{ vars.ORDER_SERVICE_PORT }}
+            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            CACHE_TTL_SECONDS=${{ vars.CACHE_TTL_SECONDS }}
+        run: |
+          printf '%s' "$ENV_FILE_CONTENT" > .env
+          missing=$(grep -E '^[A-Z_]+=$' .env | cut -d= -f1 | xargs)
+          [ -z "$missing" ] || { echo "::error::Not set in Settings > Secrets and variables > Actions: $missing"; exit 1; }
+
+      - name: Start stack (waits for every health check)
+        run: |
+          docker compose -f docker-compose.yml up -d --build --wait --wait-timeout 180
+          docker compose -f docker-compose.yml ps
+
+      - name: Order page is served
+        run: |
+          curl -fsS -o page.html http://localhost:8080/
+          grep -q '<title>Shop Orders</title>' page.html
+
+      - name: Status and products (database, then cache)
+        run: |
+          set -x
+          base=http://localhost:8080/api
+          curl -fsS "$base/status" | grep -q '"orders":"up"'
+          curl -fsS "$base/products" | grep -q '"source":"database"'
+          curl -fsS "$base/products" | grep -q '"source":"cache"'
+
+      - name: Place an order and move it through its statuses
+        run: |
+          set -x
+          base=http://localhost:8080/api
+          json='content-type: application/json'
+          # Price comes from product-service: 2 x 15000 = 30000.
+          curl -fsS -X POST -H "$json" -d '{"productId":1,"quantity":2}' "$base/orders" \
+            | grep -q '"total_price":"30000.00".*"status":"pending"'
+          curl -fsS "$base/orders" | grep -q '"product_id":1'
+          curl -fsS "$base/orders/1" | grep -q '"id":1'
+          curl -fsS -X PATCH -H "$json" -d '{"status":"paid"}' "$base/orders/1" | grep -q '"status":"paid"'
+          curl -fsS -X PATCH -H "$json" -d '{"status":"delivered"}' "$base/orders/1" | grep -q '"status":"delivered"'
+
+      - name: Bad requests are rejected
+        run: |
+          base=http://localhost:8080/api
+          json='content-type: application/json'
+          expect() { code=$(curl -s -o /dev/null -w '%{http_code}' "${@:2}"); echo "$code ${*:2}"; [ "$code" = "$1" ]; }
+          expect 409 -X PATCH -H "$json" -d '{"status":"cancelled"}' "$base/orders/1"   # delivered is final
+          expect 400 -X PATCH -H "$json" -d '{"status":"shipped"}' "$base/orders/1"     # unknown status
+          expect 400 -X POST -H "$json" -d '{"productId":99,"quantity":1}' "$base/orders" # no such product
+          expect 400 "$base/orders/abc"                                                  # bad id
+          expect 404 "$base/orders/9999"                                                 # no such order
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml logs
+
+      - name: Stop stack
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
+
+  # ---------------------------------------------------------------------------
+  # 3. Push to Docker Hub on git push (not on pull requests)
+  #    main  -> :sha-<commit>     tag v1.2.3 -> :v1.2.3
+  # ---------------------------------------------------------------------------
+  push:
+    needs: smoke-test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Work out the image tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          else
+            echo "TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create .env from GitHub variables and secrets
+        env:
+          # Passwords come from secrets (hidden in logs), everything else from variables.
+          ENV_FILE_CONTENT: |
+            DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
+            TAG=${{ vars.TAG }}
+            NGINX_HOST_PORT=${{ vars.NGINX_HOST_PORT }}
+            NGINX_PORT=${{ vars.NGINX_PORT }}
+            GATEWAY_PORT=${{ vars.GATEWAY_PORT }}
+            PRODUCT_SERVICE_PORT=${{ vars.PRODUCT_SERVICE_PORT }}
+            ORDER_SERVICE_PORT=${{ vars.ORDER_SERVICE_PORT }}
+            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
+            CACHE_TTL_SECONDS=${{ vars.CACHE_TTL_SECONDS }}
+        run: |
+          printf '%s' "$ENV_FILE_CONTENT" > .env
+          missing=$(grep -E '^[A-Z_]+=$' .env | cut -d= -f1 | xargs)
+          [ -z "$missing" ] || { echo "::error::Not set in Settings > Secrets and variables > Actions: $missing"; exit 1; }
+
+      - name: Build and push images
+        run: |
+          echo "Pushing $DOCKERHUB_USERNAME/shop-*:$TAG"
+          docker compose -f docker-compose.yml build
+          docker compose -f docker-compose.yml push nginx api-gateway product-service order-service
