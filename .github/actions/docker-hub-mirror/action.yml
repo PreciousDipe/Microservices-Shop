@@ -1,0 +1,16 @@
+name: Use a Docker Hub mirror
+description: >
+  Points the runner's Docker at Google's Docker Hub mirror (mirror.gcr.io), so base images
+  still pull when Docker Hub is rate-limiting or down. Docker falls back to Docker Hub for
+  any image the mirror doesn't have.
+runs:
+  using: composite
+  steps:
+    - name: Add mirror.gcr.io to the Docker daemon config
+      shell: bash
+      run: |
+        config=/etc/docker/daemon.json
+        current=$(sudo cat "$config" 2>/dev/null || echo '{}')
+        echo "$current" | jq '. + {"registry-mirrors": ["https://mirror.gcr.io"]}' | sudo tee "$config" >/dev/null
+        sudo systemctl restart docker
+        docker info --format 'Registry mirrors: {{.RegistryConfig.Mirrors}}'

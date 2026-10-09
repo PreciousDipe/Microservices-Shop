@@ -38,8 +38,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Logged-in pulls get a higher Docker Hub rate limit than the shared runner IP.
+      - uses: ./.github/actions/docker-hub-mirror
+
+      # Only raises the Docker Hub rate limit for images the mirror doesn't have,
+      # so a Docker Hub outage here shouldn't stop the run.
       - uses: docker/login-action@v4
+        continue-on-error: true
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -82,8 +86,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Logged-in pulls get a higher Docker Hub rate limit than the shared runner IP.
+      - uses: ./.github/actions/docker-hub-mirror
+
+      # Only raises the Docker Hub rate limit for images the mirror doesn't have,
+      # so a Docker Hub outage here shouldn't stop the run.
       - uses: docker/login-action@v4
+        continue-on-error: true
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -180,6 +188,8 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/docker-hub-mirror
 
       - uses: docker/login-action@v4
         with:
