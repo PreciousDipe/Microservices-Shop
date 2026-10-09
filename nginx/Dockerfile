@@ -25,9 +25,9 @@ ENV NGINX_PORT=8080 \
     GATEWAY_HOST=api-gateway \
     GATEWAY_PORT=3000
 
-# The image's entrypoint renders templates/*.template into conf.d/ at startup,
-# replacing the stock default.conf. Copying from the validate stage also makes
-# BuildKit run that stage instead of skipping it.
+USER root
+RUN apk upgrade --no-cache
+
 COPY --from=validate /tmp/default.conf.template /etc/nginx/templates/default.conf.template
 COPY html/index.html /usr/share/nginx/html/index.html
 
