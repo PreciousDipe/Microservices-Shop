@@ -62,6 +62,10 @@ Once the stack is up, every request goes through nginx on port `8080`.
 
 ![New order](images/order.png)
 
+The order page at http://localhost:8080 does all of this from the browser. It shows the health of each service, the products (here served from the Redis cache), an **Order** button for each product, and every order with its status:
+
+![Order page](images/order-page.png)
+
 ## 4. How images are tagged and pushed
 
 Images are named `<DOCKERHUB_USERNAME>/shop-<service>:<TAG>`. In CI, pushing a git tag `v1.0.0` publishes `:v1.0.0`, and every push to `main` publishes `:sha-<commit>`. CI needs the repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (an access token, not your password).
@@ -72,8 +76,11 @@ The pipeline should check every image build size, check for non-root user, Trivy
 
 Trivy scans both the Alpine packages and every npm package in `node_modules`. All three Node services came back clean, with `0` HIGH or CRITICAL vulnerabilities:
 
+### trivy-api-gateway
 ![Trivy scan: api-gateway](images/trivy-api-gateway.png)
 
+### trivy-product-service
 ![Trivy scan: product-service](images/trivy-product-service.png)
 
+### trivy-order-service
 ![Trivy scan: order-service](images/trivy-order-service.png)
