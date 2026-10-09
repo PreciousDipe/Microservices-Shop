@@ -39,10 +39,10 @@ The Node runtime stage starts from plain `alpine` and installs only the `nodejs`
 
 | Image | Size |
 |---|---|
-| shop-api-gateway | _fill in from CI_ |
-| shop-product-service | _fill in from CI_ |
-| shop-order-service | _fill in from CI_ |
-| shop-nginx | _fill in from CI_ |
+| shop-api-gateway | 84 MB |
+| shop-product-service | 88 MB |
+| shop-order-service | 84 MB | 
+| shop-nginx | 57 MB |
 
 ## 3. How the stack starts in the right order
 

@@ -77,20 +77,20 @@ jobs:
 
       - name: Create .env from GitHub variables and secrets
         env:
-          # Passwords come from secrets (hidden in logs), everything else from variables.
+          # Every value comes from a repository secret (Settings > Secrets and variables > Actions).
           ENV_FILE_CONTENT: |
             DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            TAG=${{ vars.TAG }}
-            NGINX_HOST_PORT=${{ vars.NGINX_HOST_PORT }}
-            NGINX_PORT=${{ vars.NGINX_PORT }}
-            GATEWAY_PORT=${{ vars.GATEWAY_PORT }}
-            PRODUCT_SERVICE_PORT=${{ vars.PRODUCT_SERVICE_PORT }}
-            ORDER_SERVICE_PORT=${{ vars.ORDER_SERVICE_PORT }}
-            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            TAG=${{ secrets.TAG }}
+            NGINX_HOST_PORT=${{ secrets.NGINX_HOST_PORT }}
+            NGINX_PORT=${{ secrets.NGINX_PORT }}
+            GATEWAY_PORT=${{ secrets.GATEWAY_PORT }}
+            PRODUCT_SERVICE_PORT=${{ secrets.PRODUCT_SERVICE_PORT }}
+            ORDER_SERVICE_PORT=${{ secrets.ORDER_SERVICE_PORT }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-            CACHE_TTL_SECONDS=${{ vars.CACHE_TTL_SECONDS }}
+            CACHE_TTL_SECONDS=${{ secrets.CACHE_TTL_SECONDS }}
         run: |
           printf '%s' "$ENV_FILE_CONTENT" > .env
           missing=$(grep -E '^[A-Z_]+=$' .env | cut -d= -f1 | xargs)
@@ -174,20 +174,20 @@ jobs:
 
       - name: Create .env from GitHub variables and secrets
         env:
-          # Passwords come from secrets (hidden in logs), everything else from variables.
+          # Every value comes from a repository secret (Settings > Secrets and variables > Actions).
           ENV_FILE_CONTENT: |
             DOCKERHUB_USERNAME=${{ secrets.DOCKERHUB_USERNAME }}
-            TAG=${{ vars.TAG }}
-            NGINX_HOST_PORT=${{ vars.NGINX_HOST_PORT }}
-            NGINX_PORT=${{ vars.NGINX_PORT }}
-            GATEWAY_PORT=${{ vars.GATEWAY_PORT }}
-            PRODUCT_SERVICE_PORT=${{ vars.PRODUCT_SERVICE_PORT }}
-            ORDER_SERVICE_PORT=${{ vars.ORDER_SERVICE_PORT }}
-            POSTGRES_USER=${{ vars.POSTGRES_USER }}
+            TAG=${{ secrets.TAG }}
+            NGINX_HOST_PORT=${{ secrets.NGINX_HOST_PORT }}
+            NGINX_PORT=${{ secrets.NGINX_PORT }}
+            GATEWAY_PORT=${{ secrets.GATEWAY_PORT }}
+            PRODUCT_SERVICE_PORT=${{ secrets.PRODUCT_SERVICE_PORT }}
+            ORDER_SERVICE_PORT=${{ secrets.ORDER_SERVICE_PORT }}
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
             POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-            POSTGRES_DB=${{ vars.POSTGRES_DB }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
             REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-            CACHE_TTL_SECONDS=${{ vars.CACHE_TTL_SECONDS }}
+            CACHE_TTL_SECONDS=${{ secrets.CACHE_TTL_SECONDS }}
         run: |
           printf '%s' "$ENV_FILE_CONTENT" > .env
           missing=$(grep -E '^[A-Z_]+=$' .env | cut -d= -f1 | xargs)
