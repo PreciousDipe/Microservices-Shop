@@ -1,6 +1,6 @@
 # Microservices-Shop
 
-A small shop backend: three Node.js services, PostgreSQL and Redis behind an nginx reverse proxy, run with Docker Compose and pushed to Docker Hub.
+A Microservice application that uses docker compose to build all the components(three Node.js services, PostgreSQL and Redis behind an nginx reverse proxy)
 
 ![Architecture diagram](images/architecture.png)
 
@@ -10,14 +10,14 @@ A small shop backend: three Node.js services, PostgreSQL and Redis behind an ngi
 |---|---|---|
 | Multi-stage builds | ✅ | Node: `build` → `runtime`. nginx: `validate` (`nginx -t`) → `runtime`. |
 | Alpine base, pinned versions | ✅ | `alpine:3.24.2`, `nginx-unprivileged:1.31.6-alpine`, `postgres:17.11-alpine3.24`, `redis:8.8.3-alpine`. |
-| Non-root | ✅ | Node services as `app` (UID 1001), nginx as `nginx`, postgres as `postgres`, redis as `redis`. |
+| Non-root | ✅ | Node services as `app`, nginx as `nginx`, postgres as `postgres`, redis as `redis`. |
 | HEALTHCHECK | ✅ | Every container. product and order only report healthy when PostgreSQL and Redis respond. |
 | Under 150 MB | ✅ | Checked in CI on every build. |
 | Layer caching | ✅ | `package*.json` is installed before the source is copied. |
 | No secrets in images | ✅ | Passwords come from `.env` at runtime. `.env` is git-ignored and in every `.dockerignore`. |
 | Startup order | ✅ | `depends_on: service_healthy`: nginx → gateway → product + order → postgres + redis. |
 | Named volumes | ✅ | `pgdata`, `redisdata`. |
-| Custom networks | ✅ | `edge`, `backend` (internal), `data` (internal). |
+| networks | ✅ | `edge`, `backend` (internal), `data` (internal). |
 | Resource limits | ✅ | CPU and memory limits on every service. |
 
 ## Quick start
@@ -70,4 +70,10 @@ Images are named `<DOCKERHUB_USERNAME>/shop-<service>:<TAG>`. In CI, pushing a g
 
 The pipeline should check every image build size, check for non-root user, Trivy scan, which fails on fixable CRITICAL CVEs. Then a smoke test starts the whole stack and calls the API through nginx. Images are pushed only after both pass, and never from pull requests.
 
-_Add the Trivy scan screenshot here._
+Trivy scans both the Alpine packages and every npm package in `node_modules`. All three Node services came back clean, with `0` HIGH or CRITICAL vulnerabilities:
+
+![Trivy scan: api-gateway](images/trivy-api-gateway.png)
+
+![Trivy scan: product-service](images/trivy-product-service.png)
+
+![Trivy scan: order-service](images/trivy-order-service.png)

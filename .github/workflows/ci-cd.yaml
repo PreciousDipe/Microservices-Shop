@@ -9,8 +9,9 @@ permissions:
   contents: read
 
 env:
-  HADOLINT_IMAGE: hadolint/hadolint:v2.12.0
-  TRIVY_IMAGE: aquasec/trivy:0.75.0
+  # Pulled from GitHub's registry, so they don't count against the Docker Hub limit.
+  HADOLINT_IMAGE: ghcr.io/hadolint/hadolint:v2.12.0
+  TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0
   MAX_IMAGE_MB: 150
 
 jobs:
@@ -36,6 +37,12 @@ jobs:
       IMAGE: shop-${{ matrix.service }}:ci
     steps:
       - uses: actions/checkout@v4
+
+      # Logged-in pulls get a higher Docker Hub rate limit than the shared runner IP.
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Lint Dockerfile (hadolint)
         run: docker run --rm -i "$HADOLINT_IMAGE" hadolint --failure-threshold warning --ignore DL3018 - < ${{ matrix.context }}/Dockerfile
@@ -74,6 +81,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Logged-in pulls get a higher Docker Hub rate limit than the shared runner IP.
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Create .env from GitHub variables and secrets
         env:
